@@ -118,7 +118,7 @@ pub(crate) unsafe fn on_irq_inner(dma: pac::gpdma::Gpdma, channel_num: usize, in
     }
 
     if sr.tcf() {
-        //clear the flag for the transfer complete
+        //clear the flag for the transfer complete so circular transfers can resume
         ch.fcr().modify(|w| w.set_tcf(true));
         STATE.complete_count[index].fetch_add(1, Ordering::Relaxed);
         STATE.ch_wakers[index].wake();
@@ -126,8 +126,6 @@ pub(crate) unsafe fn on_irq_inner(dma: pac::gpdma::Gpdma, channel_num: usize, in
     }
 
     if sr.suspf() {
-        ch.fcr().modify(|w| w.set_suspf(true));
-
         // disable all xxIEs to prevent the irq from firing again.
         ch.cr().modify(|w| {
             w.set_tcie(false);
@@ -352,7 +350,7 @@ impl<'a, C: Channel> Transfer<'a, C> {
     pub fn is_running(&mut self) -> bool {
         let ch = self.channel.regs().ch(self.channel.num());
         let sr = ch.sr().read();
-        !sr.tcf() && !sr.suspf()
+        !sr.idlef() && !sr.suspf()
     }
 
     /// Gets the total remaining transfers for the channel
@@ -500,7 +498,8 @@ impl RingBuffer {
     }
 
     fn is_running(ch: &pac::gpdma::Channel) -> bool {
-        !ch.sr().read().tcf()
+        let sr = ch.sr().read();
+        !sr.idlef() && !sr.suspf()
     }
 
     fn request_suspend(ch: &pac::gpdma::Channel) {

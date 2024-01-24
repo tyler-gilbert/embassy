@@ -477,21 +477,26 @@ impl<'d, T: Instance, Tx, Rx> Spi<'d, T, Tx, Rx> {
             w.set_spe(false);
         });
 
+        defmt::info!("SPI write: new write");
         let tx_request = self.txdma.request();
         let tx_dst = T::REGS.tx_ptr();
         let tx_f = unsafe { Transfer::new_write(&mut self.txdma, tx_request, data, tx_dst, Default::default()) };
 
+        defmt::info!("SPI write: txdmaen");
         set_txdmaen(T::REGS, true);
         T::REGS.cr1().modify(|w| {
             w.set_spe(true);
         });
+        defmt::info!("SPI write: cstart");
         #[cfg(any(spi_v3, spi_v4, spi_v5))]
         T::REGS.cr1().modify(|w| {
             w.set_cstart(true);
         });
 
+        defmt::info!("SPI write: waiting for tx_f");
         tx_f.await;
 
+        defmt::info!("SPI write: finish DMA");
         finish_dma(T::REGS);
 
         Ok(())
@@ -586,6 +591,7 @@ impl<'d, T: Instance, Tx, Rx> Spi<'d, T, Tx, Rx> {
         let tx_f = unsafe { Transfer::new_write_raw(&mut self.txdma, tx_request, write, tx_dst, Default::default()) };
 
         set_txdmaen(T::REGS, true);
+
         T::REGS.cr1().modify(|w| {
             w.set_spe(true);
         });
@@ -594,8 +600,10 @@ impl<'d, T: Instance, Tx, Rx> Spi<'d, T, Tx, Rx> {
             w.set_cstart(true);
         });
 
+        //defmt::info!("SPI: transfer waiting for tx_f, rx_f");
         join(tx_f, rx_f).await;
 
+        defmt::info!("SPI: finish DMA");
         finish_dma(T::REGS);
 
         Ok(())
